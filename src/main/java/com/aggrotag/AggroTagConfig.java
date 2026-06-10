@@ -23,25 +23,35 @@ public interface AggroTagConfig extends Config {
         return new Color(255, 140, 0, 255);
     }
 
+    @ConfigItem(keyName = "hideAggro", name = "Hide Aggro", description = "When enabled, hides the aggro name tag (or square marker) for NPCs that are aggressive but not currently targeting you. Max hit and other overlays are unaffected.", position = 3)
+    default boolean hideAggro() {
+        return false;
+    }
+
+    @ConfigItem(keyName = "hideTargeting", name = "Hide Targeting", description = "When enabled, hides the targeting-you name tag (or square marker) for NPCs that are actively targeting/chasing you. Max hit and other overlays are unaffected.", position = 4)
+    default boolean hideTargeting() {
+        return false;
+    }
+
     @Range(min = 0, max = 100)
-    @ConfigItem(keyName = "baseOpacity", name = "Base Tag Opacity %", description = "General opacity for all active tags. 0 = fully invisible, 100 = full brightness. Default 100.", position = 3)
+    @ConfigItem(keyName = "baseOpacity", name = "Base Tag Opacity %", description = "General opacity for all active tags. 0 = fully invisible, 100 = full brightness. Default 100.", position = 5)
     default int baseOpacity() {
         return 100;
     }
 
     @Range(min = -500, max = 500)
-    @ConfigItem(keyName = "tagVerticalOffset", name = "Vertical Position Shift", description = "Shift the entire tag layout up (negative) or down (positive) on your screen.", position = 4)
+    @ConfigItem(keyName = "tagVerticalOffset", name = "Vertical Position Shift", description = "Shift the entire tag layout up (negative) or down (positive) on your screen.", position = 6)
     default int tagVerticalOffset() {
         return 0;
     }
 
-    @ConfigItem(keyName = "dimInSingleCombat", name = "Dim Others in Single Combat", description = "<html>In single-combat zones, when you are already fighting an NPC,<br>all other aggressive NPC tags are dimmed — they cannot attack you<br>while your combat slot is occupied. Tags return to full brightness<br>the moment your target dies. Has no effect in multi-combat areas.</html>", position = 5)
+    @ConfigItem(keyName = "dimInSingleCombat", name = "Dim Others in Single Combat", description = "<html>In single-combat zones, when you are already fighting an NPC,<br>all other aggressive NPC tags are dimmed — they cannot attack you<br>while your combat slot is occupied. Tags return to full brightness<br>the moment your target dies. Has no effect in multi-combat areas.</html>", position = 7)
     default boolean dimInSingleCombat() {
         return true;
     }
 
     @Range(min = 0, max = 100)
-    @ConfigItem(keyName = "dimmedOpacity", name = "Dimmed Tag Opacity %", description = "How transparent dimmed (non-threatening) NPC tags appear. 0 = fully invisible, 100 = full brightness. Default 25.", position = 6)
+    @ConfigItem(keyName = "dimmedOpacity", name = "Dimmed Tag Opacity %", description = "How transparent dimmed (non-threatening) NPC tags appear. 0 = fully invisible, 100 = full brightness. Default 25.", position = 8)
     default int dimmedOpacity() {
         return 25;
     }

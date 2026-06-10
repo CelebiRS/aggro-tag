@@ -306,6 +306,13 @@ public class AggroTagOverlay extends Overlay {
         if (alpha < 1f) {
             graphics.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
         }
+
+        // ── Hide Aggro / Hide Targeting ────────────────────────────────────────────
+        // These flags only suppress the name/square marker — max hit overlays still render.
+        boolean isTargetingPlayer = npc.getInteracting() == client.getLocalPlayer();
+        boolean hiddenByConfig = (isTargetingPlayer && plugin.getConfig().hideTargeting())
+                || (!isTargetingPlayer && plugin.getConfig().hideAggro());
+
         String name = npc.getName();
 
         Point textPoint = npc.getCanvasTextLocation(
@@ -342,10 +349,14 @@ public class AggroTagOverlay extends Overlay {
             return;
         }
 
-        boolean showName = !(inMinigame && behavior == MinigameBehavior.HIDE_NAMES);
+        boolean showName = !hiddenByConfig && !(inMinigame && behavior == MinigameBehavior.HIDE_NAMES);
 
         // ── Name or Square rendering ──────────────────────────────────────────────
-        boolean isTargetingPlayer = npc.getInteracting() == client.getLocalPlayer();
+        // NOTE: textPoint.getX() = npcScreenCenterX - nameWidth/2.
+        // The API already positions the name centered over the NPC, so we draw
+        // the name at textPoint.getX() directly. NPC ID goes to the left, max hit
+        // appends to the right.
+        int npcCenterX = textPoint.getX() + nameWidth / 2;
         boolean useSquare = plugin.getConfig().useSquareMarker();
         int squareWidth = 0; // Keep track for max hit offset
 
@@ -358,8 +369,9 @@ public class AggroTagOverlay extends Overlay {
                 Color outlineColor = plugin.getConfig().squareOutlineColor();
                 squareWidth = sSize;
 
+                // Center the square (+ optional ID) over the NPC
                 int totalWidth = idWidth + sSize;
-                int startX = textPoint.getX() - totalWidth / 2;
+                int startX = npcCenterX - totalWidth / 2;
 
                 if (plugin.getConfig().showNpcId()) {
                     drawTextWithShadow(graphics, idStr, startX, y, Color.WHITE);
@@ -379,17 +391,17 @@ public class AggroTagOverlay extends Overlay {
                 graphics.setColor(fillColor);
                 graphics.fillRect(sqX, sqY, sSize, sSize);
             } else {
-                int totalWidth = idWidth + nameWidth;
-                int startX = textPoint.getX() - totalWidth / 2;
+                // Name is the centered anchor; ID goes to the left of it
+                int nameStartX = textPoint.getX();
 
                 if (plugin.getConfig().showNpcId()) {
-                    drawTextWithShadow(graphics, idStr, startX, y, Color.WHITE);
+                    drawTextWithShadow(graphics, idStr, nameStartX - idWidth, y, Color.WHITE);
                 }
 
                 Color nameColor = isTargetingPlayer
                         ? plugin.getConfig().targetingNameColor()
                         : plugin.getConfig().aggroNameColor();
-                drawTextWithShadow(graphics, name, startX + idWidth, y, nameColor);
+                drawTextWithShadow(graphics, name, nameStartX, y, nameColor);
             }
         }
 
@@ -406,23 +418,27 @@ public class AggroTagOverlay extends Overlay {
 
         int hpPercent = getHpPercent(maxHit);
 
-        // If the name is hidden or a square is used, center the max hit over the NPC.
-        // Otherwise, put it to the right.
+        // If the name is hidden, center the max hit over the NPC.
+        // Otherwise, append it to the right of the name (or square).
         int labelX;
-        if (!showName) {
-            labelX = textPoint.getX()
-                    - (fm.stringWidth(" [" + maxHit + (hpPercent >= 0 ? " \u00b7 " + hpPercent + "%" : "") + "]") / 2);
+        boolean centerLabel = !showName;
+        if (centerLabel) {
+            int labelWidth = fm.stringWidth("[" + maxHit + (hpPercent >= 0 ? " \u00b7 " + hpPercent + "%" : "") + "]");
+            labelX = npcCenterX - labelWidth / 2;
         } else if (useSquare) {
-            labelX = textPoint.getX() + ((idWidth + squareWidth) / 2) + 2;
+            // Append to the right of the centered square + ID block
+            int totalWidth = idWidth + squareWidth;
+            labelX = npcCenterX + totalWidth / 2 + 2;
         } else {
-            labelX = textPoint.getX() - ((idWidth + nameWidth) / 2) + idWidth + nameWidth;
+            // Append to the right of the name
+            labelX = textPoint.getX() + nameWidth;
         }
 
         if (plugin.getConfig().colorByAttackStyle()) {
-            renderStyleColoredHit(graphics, fm, npc, maxHit, hpPercent, labelX, y);
+            renderStyleColoredHit(graphics, fm, npc, maxHit, hpPercent, labelX, y, centerLabel);
         } else {
             // Single yellow label — default / legacy
-            String prefix = " [" + maxHit;
+            String prefix = centerLabel ? "[" + maxHit : " [" + maxHit;
             drawTextWithShadow(graphics, prefix, labelX, y, COLOR_DEFAULT);
             int curX = labelX + fm.stringWidth(prefix);
 
@@ -445,9 +461,9 @@ public class AggroTagOverlay extends Overlay {
     private void renderStyleColoredHit(
             Graphics2D graphics, FontMetrics fm,
             NPC npc, int maxHit, int hpPercent,
-            int startX, int y) {
+            int startX, int y, boolean centerLabel) {
         int style = plugin.getAttackStyleBitmask(npc);
-        String numLabel = " [" + maxHit + "]";
+        String numLabel = centerLabel ? "[" + maxHit + "]" : " [" + maxHit + "]";
         int numW = fm.stringWidth(numLabel);
         int curX = startX;
         boolean drew = false;
@@ -472,7 +488,7 @@ public class AggroTagOverlay extends Overlay {
             // Unknown style — use the same colour as the NPC name tag so it's
             // immediately obvious that this max hit is unclassified.
             Color unknownColor = plugin.getConfig().aggroNameColor();
-            String prefix = " [" + maxHit;
+            String prefix = centerLabel ? "[" + maxHit : " [" + maxHit;
             drawTextWithShadow(graphics, prefix, curX, y, unknownColor);
             int tempX = curX + fm.stringWidth(prefix);
             if (hpPercent >= 0) {
