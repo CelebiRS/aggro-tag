@@ -218,9 +218,14 @@ public class AggroTagPlugin extends Plugin implements KeyListener {
     // ── Plugin lifecycle ───────────────────────────────────────────────────────
 
     private boolean radiusHotkeyHeld;
+    private boolean allMaxHitHotkeyHeld;
 
     public boolean isRadiusHotkeyHeld() {
         return radiusHotkeyHeld;
+    }
+    
+    public boolean isAllMaxHitHotkeyHeld() {
+        return allMaxHitHotkeyHeld;
     }
 
     @Override
@@ -260,12 +265,18 @@ public class AggroTagPlugin extends Plugin implements KeyListener {
                 radiusHotkeyHeld = true;
             }
         }
+        if (config.showAllMaxHitHotkey().matches(e)) {
+            allMaxHitHotkeyHeld = true;
+        }
     }
 
     @Override
     public void keyReleased(KeyEvent e) {
         if (!config.radiusToggle() && config.radiusHotkey().matches(e)) {
             radiusHotkeyHeld = false;
+        }
+        if (config.showAllMaxHitHotkey().matches(e)) {
+            allMaxHitHotkeyHeld = false;
         }
     }
 
@@ -279,14 +290,24 @@ public class AggroTagPlugin extends Plugin implements KeyListener {
 
     /**
      * Returns true if the local player is currently in combat
-     * (interacting with an NPC that is also interacting back).
+     * (interacting with an NPC, or an NPC is interacting with the player).
      */
     public boolean isPlayerInCombat() {
         if (client.getLocalPlayer() == null) {
             return false;
         }
         Actor target = client.getLocalPlayer().getInteracting();
-        return target instanceof NPC;
+        if (target instanceof NPC && ((NPC) target).getCombatLevel() > 0) {
+            return true;
+        }
+        if (client.getTopLevelWorldView() != null) {
+            for (NPC npc : client.getTopLevelWorldView().npcs()) {
+                if (npc.getCombatLevel() > 0 && npc.getInteracting() == client.getLocalPlayer()) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     // ── Public API used by the overlay ────────────────────────────────────────
@@ -410,13 +431,14 @@ public class AggroTagPlugin extends Plugin implements KeyListener {
         if (client.getVarbitValue(VARBIT_MULTICOMBAT_AREA) == 1)
             return false;
 
-        Actor playerTarget = client.getLocalPlayer() != null
-                ? client.getLocalPlayer().getInteracting()
-                : null;
-        if (playerTarget == null)
-            return false;
+        boolean npcIsTargetingPlayer = npc.getInteracting() == client.getLocalPlayer();
+        boolean playerIsTargetingNpc = client.getLocalPlayer() != null && client.getLocalPlayer().getInteracting() == npc;
 
-        return npc != playerTarget;
+        if (npcIsTargetingPlayer || playerIsTargetingNpc) {
+            return false; // Active targets are never dimmed
+        }
+
+        return isPlayerInCombat();
     }
 
     // ── Tolerance tracking ────────────────────────────────────────────────────

@@ -33,6 +33,11 @@ public interface AggroTagConfig extends Config {
         return false;
     }
 
+    @ConfigItem(keyName = "preventTagOverlap", name = "Prevent Tag Overlap", description = "When enabled, NPC tags will physically bump into each other and float apart so they don't overlap.", position = 4)
+    default boolean preventTagOverlap() {
+        return true;
+    }
+
     @Range(min = 0, max = 100)
     @ConfigItem(keyName = "baseOpacity", name = "Base Tag Opacity %", description = "General opacity for all active tags. 0 = fully invisible, 100 = full brightness. Default 100.", position = 5)
     default int baseOpacity() {
@@ -73,7 +78,7 @@ public interface AggroTagConfig extends Config {
     @ConfigSection(name = "Aggression Radius", description = "Settings for visualizing the attack range of aggressive NPCs", position = 30, closedByDefault = true)
     String radiusSection = "radiusSection";
 
-    @ConfigSection(name = "NPC ID Display", description = "Options for showing NPC IDs on tags", position = 50, closedByDefault = true)
+    @ConfigSection(name = "NPC ID & Level", description = "Options for showing NPC IDs and Combat Levels on tags", position = 50, closedByDefault = true)
     String npcIdSection = "npcIdSection";
 
     @ConfigSection(name = "Edge Cases", description = "Toggle tracking of specific situational aggression rules", position = 40, closedByDefault = true)
@@ -91,7 +96,12 @@ public interface AggroTagConfig extends Config {
         return true;
     }
 
-    @ConfigItem(keyName = "colorByAttackStyle", name = "Color Max Hit by Attack Style", description = "<html>When enabled, shows a separate colored number per attack style:<br>&nbsp;&nbsp;<b><font color='#ffe550ff'>Yellow</font></b> = Melee &nbsp;<b><font color='#3CFF64'>Green</font></b> = Ranged &nbsp;<b><font color='#6496FF'>Blue</font></b> = Magic<br>Falls back to yellow if the attack style is unknown.</html>", position = 3, section = maxHitSection)
+    @ConfigItem(keyName = "showAllMaxHitHotkey", name = "Show All Max Hit (Hold)", description = "Press and hold this key to show the max hit for ALL NPCs, including passive ones.", position = 3, section = maxHitSection)
+    default Keybind showAllMaxHitHotkey() {
+        return Keybind.ALT;
+    }
+
+    @ConfigItem(keyName = "colorByAttackStyle", name = "Color Max Hit by Attack Style", description = "<html>When enabled, shows a separate colored number per attack style:<br>&nbsp;&nbsp;<b><font color='#ffe550ff'>Yellow</font></b> = Melee &nbsp;<b><font color='#3CFF64'>Green</font></b> = Ranged &nbsp;<b><font color='#6496FF'>Blue</font></b> = Magic<br>Falls back to yellow if the attack style is unknown.</html>", position = 4, section = maxHitSection)
     default boolean colorByAttackStyle() {
         return true;
     }
@@ -250,7 +260,13 @@ public interface AggroTagConfig extends Config {
         return true;
     }
 
-    // ── NPC ID ─────────────────────────────────────────────────────────────
+    // ── NPC ID & LEVEL
+    // ─────────────────────────────────────────────────────────────
+
+    @ConfigItem(keyName = "showNpcLevel", name = "Show NPC Level", description = "Appends the NPC Combat Level to the left of the tagged NPC name.", position = 0, section = npcIdSection)
+    default boolean showNpcLevel() {
+        return false;
+    }
 
     @ConfigItem(keyName = "showNpcId", name = "Show Tagged NPC ID", description = "Appends the NPC ID to the left of the tagged NPC name.", position = 1, section = npcIdSection)
     default boolean showNpcId() {
@@ -279,7 +295,7 @@ public interface AggroTagConfig extends Config {
         return true;
     }
 
-    @ConfigItem(keyName = "minigameBehavior", name = "Wave Minigame Behavior", description = "<html>Controls the plugin inside raids and combat minigames where standard aggression rules don't apply (or visual clutter is high):<br>&nbsp;&nbsp;<b>Fight Caves</b>, <b>Inferno</b>, <b>Colosseum</b>, <b>NMZ</b><br>&nbsp;&nbsp;<b>The Gauntlet & Corrupted Gauntlet</b><br>&nbsp;&nbsp;<b>Chambers of Xeric</b>, <b>Theatre of Blood</b>, <b>ToA</b><br>&nbsp;&nbsp;<b>Pest Control</b>, <b>Barbarian Assault</b>, <b>Soul Wars</b>, <b>Temple Trekking</b>, <b>GOTR</b><br><br><b>Show Everything</b> \u2014 legacy, all tags visible<br><b>Hide Names, Show Max Hits</b> \u2014 (default) clears the clutter, keeps combat data<br><b>Disable Plugin Completely</b> \u2014 hides everything inside these zones</html>", position = 3, section = edgeCasesSection)
+    @ConfigItem(keyName = "minigameBehavior", name = "Minigames", description = "<html>Controls the plugin inside raids and combat minigames where standard aggression rules don't apply (or visual clutter is high):<br>&nbsp;&nbsp;<b>Fight Caves</b>, <b>Inferno</b>, <b>Colosseum</b>, <b>NMZ</b><br>&nbsp;&nbsp;<b>The Gauntlet & Corrupted Gauntlet</b><br>&nbsp;&nbsp;<b>Chambers of Xeric</b>, <b>Theatre of Blood</b>, <b>ToA</b><br>&nbsp;&nbsp;<b>Pest Control</b>, <b>Barbarian Assault</b>, <b>Soul Wars</b>, <b>Temple Trekking</b>, <b>GOTR</b><br><br><b>Show Everything</b> \u2014 legacy, all tags visible<br><b>Hide Names, Show Max Hits</b> \u2014 (default) clears the clutter, keeps combat data<br><b>Disable Plugin Completely</b> \u2014 hides everything inside these zones</html>", position = 3, section = edgeCasesSection)
     default MinigameBehavior minigameBehavior() {
         return MinigameBehavior.HIDE_NAMES;
     }

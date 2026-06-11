@@ -14,6 +14,7 @@ import java.util.Set;
 import java.awt.Polygon;
 import java.awt.BasicStroke;
 import java.awt.Shape;
+import java.awt.geom.Point2D;
 
 import net.runelite.api.NPC;
 import net.runelite.api.NPCComposition;
@@ -113,6 +114,23 @@ public class AggroTagOverlay extends Overlay {
     @Nonnull
     private final Client client;
 
+    // ── Fading State ──────────────────────────────────────────────────────────
+    private long lastFrameTime = 0;
+    private float currentDt = 0f;
+    private float globalRadiusFade = 0f; // 0.0 = bright, 1.0 = dimmed
+    private final java.util.Map<Integer, Float> npcFadeMap = new java.util.HashMap<>();
+
+    // ── Physics Bumping State ─────────────────────────────────────────────────
+    private static class TagBounds {
+        NPC npc;
+        float centerX;
+        float centerY;
+        float width;
+        float height;
+        WorldPoint worldPoint;
+    }
+    private final java.util.Map<Integer, Point2D.Float> tagOffsets = new java.util.HashMap<>();
+
     @Inject
     public AggroTagOverlay(AggroTagPlugin plugin, @Nonnull Client client) {
 
@@ -129,6 +147,31 @@ public class AggroTagOverlay extends Overlay {
     public Dimension render(Graphics2D graphics) {
         if (client.getTopLevelWorldView() == null) {
             return null;
+        }
+
+        // Calculate delta time for 1-second fading
+        long now = System.currentTimeMillis();
+        if (lastFrameTime != 0) {
+            currentDt = (now - lastFrameTime) / 1000f;
+        }
+        lastFrameTime = now;
+        if (currentDt > 0.1f) currentDt = 0.1f; // Cap dt to prevent huge jumps from lag
+
+        // Update global radius fade
+        if (plugin.isPlayerInCombat()) {
+            globalRadiusFade += currentDt;
+            if (globalRadiusFade > 1f) globalRadiusFade = 1f;
+        } else {
+            globalRadiusFade -= currentDt;
+            if (globalRadiusFade < 0f) globalRadiusFade = 0f;
+        }
+
+        // Occasional cleanup of the NPC fade map
+        if (npcFadeMap.size() > 1000) {
+            npcFadeMap.clear();
+        }
+        if (tagOffsets.size() > 1000) {
+            tagOffsets.clear();
         }
 
         java.util.List<NPC> targetingPlayer = new java.util.ArrayList<>();
@@ -160,6 +203,86 @@ public class AggroTagOverlay extends Overlay {
         // Fuses all overlapping shapes into a single uniform polygon
         if (!aggressiveNpcs.isEmpty()) {
             renderAllRadii(graphics, aggressiveNpcs);
+        }
+
+        // Physics Bumping Pass
+        if (plugin.getConfig().preventTagOverlap()) {
+            java.util.List<TagBounds> activeTags = new java.util.ArrayList<>();
+            
+            for (NPC npc : otherNpcs) {
+                TagBounds tb = measureTag(graphics, npc, aggressiveNpcs.contains(npc));
+                if (tb != null) activeTags.add(tb);
+            }
+            for (NPC npc : targetingPlayer) {
+                TagBounds tb = measureTag(graphics, npc, aggressiveNpcs.contains(npc));
+                if (tb != null) activeTags.add(tb);
+            }
+
+            for (int i = 0; i < activeTags.size(); i++) {
+                TagBounds tb1 = activeTags.get(i);
+                Point2D.Float off1 = tagOffsets.computeIfAbsent(tb1.npc.getIndex(), k -> new Point2D.Float(0, 0));
+                
+                for (int j = i + 1; j < activeTags.size(); j++) {
+                    TagBounds tb2 = activeTags.get(j);
+                    Point2D.Float off2 = tagOffsets.computeIfAbsent(tb2.npc.getIndex(), k -> new Point2D.Float(0, 0));
+                    
+                    boolean sameTile = tb1.worldPoint != null && tb2.worldPoint != null && tb1.worldPoint.equals(tb2.worldPoint);
+                    
+                    float c1x = tb1.centerX + off1.x;
+                    float c1y = tb1.centerY + off1.y;
+                    float c2x = tb2.centerX + off2.x;
+                    float c2y = tb2.centerY + off2.y;
+                    
+                    float dx = c1x - c2x;
+                    float dy = c1y - c2y;
+                    
+                    float margin = 0f; 
+                    float minDistX = ((tb1.width + tb2.width) / 2f + margin) * 0.80f;
+                    float minDistY = ((tb1.height + tb2.height) / 2f + margin) * 0.85f;
+                    
+                    if (sameTile) {
+                        // Stack vertically
+                        if (Math.abs(dy) < minDistY) {
+                            float pushY = (minDistY - Math.abs(dy)) * 0.10f; 
+                            if (dy >= 0) { off1.y += pushY; off2.y -= pushY; }
+                            else { off1.y -= pushY; off2.y += pushY; }
+                        }
+                    } else {
+                        // Repulse smoothly proportional to penetration depth
+                        if (Math.abs(dx) < minDistX && Math.abs(dy) < minDistY) {
+                            if (dx == 0 && dy == 0) { dx = 0.1f; dy = 0.1f; }
+                            
+                            float penX = minDistX - Math.abs(dx);
+                            float penY = minDistY - Math.abs(dy);
+                            
+                            // Ratio goes from 0 (barely touching) to 1 (perfectly centered on each other)
+                            float overlapRatio = Math.min(penX / minDistX, penY / minDistY);
+                            float dist = (float) Math.sqrt(dx*dx + dy*dy);
+                            
+                            // Smooth force instead of constant 2.0 to prevent bang-bang vibration
+                            float force = overlapRatio * 8.0f; 
+                            
+                            float pushX = (dx / dist) * force;
+                            float pushY = (dy / dist) * force * 1.5f; 
+                            
+                            off1.x += pushX;
+                            off1.y += pushY;
+                            off2.x -= pushX;
+                            off2.y -= pushY;
+                        }
+                    }
+                }
+                
+                // Spring back to origin (limits maximum displacement and gently pulls them back when not crowded)
+                off1.x *= 0.85f;
+                off1.y *= 0.85f;
+            }
+        } else {
+            // Decay all offsets quickly if disabled
+            for (Point2D.Float off : tagOffsets.values()) {
+                off.x *= 0.8f;
+                off.y *= 0.8f;
+            }
         }
 
         // Pass 2: Render standard NPCs on the bottom layer
@@ -307,9 +430,10 @@ public class AggroTagOverlay extends Overlay {
             Color tagColor = plugin.getConfig().radiusColor();
 
             int opacity = plugin.getConfig().radiusOpacity();
-            // Dim the radius to near-invisible when the player is in combat
-            if (plugin.getConfig().dimRadiusInCombat() && plugin.isPlayerInCombat()) {
-                opacity = plugin.getConfig().dimmedRadiusOpacity();
+            // Dim the radius to near-invisible when the player is in combat, fading over 1 sec
+            if (plugin.getConfig().dimRadiusInCombat()) {
+                int dimOp = plugin.getConfig().dimmedRadiusOpacity();
+                opacity = (int) (opacity + (dimOp - opacity) * globalRadiusFade);
             }
             int radiusAlpha = (int) ((opacity / 100.0f) * 255);
             Color fillColor = new Color(tagColor.getRed(), tagColor.getGreen(), tagColor.getBlue(), radiusAlpha);
@@ -325,29 +449,149 @@ public class AggroTagOverlay extends Overlay {
         }
     }
 
+    // ── Tag Measuring ─────────────────────────────────────────────────────────
+
+    private TagBounds measureTag(Graphics2D graphics, NPC npc, boolean isAggro) {
+        boolean isTargetingPlayer = npc.getInteracting() == client.getLocalPlayer();
+        boolean hiddenByConfig = (isTargetingPlayer && plugin.getConfig().hideTargeting())
+                || (!isTargetingPlayer && plugin.getConfig().hideAggro());
+
+        int regionId = -1;
+        if (client.getLocalPlayer() != null && client.getLocalPlayer().getWorldLocation() != null) {
+            regionId = client.getLocalPlayer().getWorldLocation().getRegionID();
+        }
+        boolean inMinigame = MINIGAME_REGIONS.contains(regionId);
+        MinigameBehavior behavior = plugin.getConfig().minigameBehavior();
+
+        if (inMinigame && behavior == MinigameBehavior.DISABLE_ENTIRELY) {
+            return null;
+        }
+
+        boolean isCombatState = isAggro || isTargetingPlayer;
+        boolean showName = isCombatState && !hiddenByConfig && !(inMinigame && behavior == MinigameBehavior.HIDE_NAMES);
+
+        boolean showMaxHitForState = plugin.isAllMaxHitHotkeyHeld() || (isTargetingPlayer ? plugin.getConfig().showTargetingMaxHit() : (isAggro && plugin.getConfig().showAggroMaxHit()));
+        int maxHit = plugin.getMaxHit(npc);
+        boolean showMaxHit = showMaxHitForState && maxHit > 0;
+
+        boolean hasIdStr = (plugin.getConfig().showNpcLevel() && npc.getCombatLevel() > 0) || plugin.getConfig().showNpcId();
+
+        if (!showName && !showMaxHit && (!isCombatState || !hasIdStr) && !plugin.getConfig().alwaysShowNpcId()) {
+            return null; // nothing to render
+        }
+
+        String name = npc.getName();
+        Point textPoint = npc.getCanvasTextLocation(graphics, name, npc.getLogicalHeight() + TEXT_HEIGHT_OFFSET);
+        if (textPoint == null) {
+            return null;
+        }
+
+        FontMetrics fm = graphics.getFontMetrics();
+        int nameWidth = fm.stringWidth(name);
+        
+        String prefixStr = "";
+        if (plugin.getConfig().showNpcLevel() && npc.getCombatLevel() > 0) {
+            prefixStr += "[Lvl: " + npc.getCombatLevel() + "] ";
+        }
+        if (plugin.getConfig().showNpcId()) {
+            prefixStr += "[" + npc.getId() + "] ";
+        }
+        int idWidth = prefixStr.isEmpty() ? 0 : fm.stringWidth(prefixStr);
+        int height = fm.getHeight();
+
+        int totalWidth = 0;
+        boolean centerLabel = !showName;
+        int npcCenterX = textPoint.getX() + nameWidth / 2 + plugin.getConfig().tagHorizontalOffset();
+
+        if (showName) {
+            if (plugin.getConfig().useSquareMarker()) {
+                int sSize = plugin.getConfig().squareSize();
+                totalWidth = idWidth + sSize;
+                height = Math.max(height, sSize);
+            } else {
+                totalWidth = idWidth + nameWidth;
+            }
+        } else if (isCombatState) {
+            totalWidth = idWidth;
+        }
+
+        if (showMaxHit) {
+            int hpPercent = getHpPercent(maxHit);
+            String maxHitStr = "[" + maxHit + (hpPercent >= 0 ? " \u00b7 " + hpPercent + "%" : "") + "]";
+            int maxHitWidth = fm.stringWidth(maxHitStr);
+            if (plugin.getConfig().colorHpNumber() || plugin.getConfig().colorHpPercent()) {
+                maxHitWidth += 10; // rough approximation for size increase
+                height += 4;
+            }
+            if (centerLabel) {
+                totalWidth = maxHitWidth;
+            } else {
+                totalWidth += maxHitWidth + 2; 
+            }
+        } else if (!isAggro && plugin.getConfig().alwaysShowNpcId()) {
+            String idStr = "[" + npc.getId() + "]";
+            totalWidth = fm.stringWidth(idStr);
+        }
+
+        TagBounds tb = new TagBounds();
+        tb.npc = npc;
+        tb.width = totalWidth;
+        tb.height = height;
+        tb.worldPoint = npc.getWorldLocation();
+        
+        tb.centerX = npcCenterX;
+        tb.centerY = textPoint.getY() - height / 2f + plugin.getConfig().tagVerticalOffset();
+
+        return tb;
+    }
+
     // ── Per-NPC rendering ─────────────────────────────────────────────────────
 
     private void renderNpcLogic(Graphics2D graphics, NPC npc, boolean isAggro) {
         AggroTagConfig config = plugin.getConfig();
-        if (isAggro) {
-            renderAggroTag(graphics, npc);
+        Point2D.Float off = tagOffsets.getOrDefault(npc.getIndex(), new Point2D.Float(0, 0));
+        
+        boolean isTargetingPlayer = npc.getInteracting() == client.getLocalPlayer();
+        boolean showMaxHitForState = plugin.isAllMaxHitHotkeyHeld() || (isTargetingPlayer ? config.showTargetingMaxHit() : (isAggro && config.showAggroMaxHit()));
+        boolean hasMaxHit = showMaxHitForState && plugin.getMaxHit(npc) > 0;
+
+        if (isAggro || hasMaxHit) {
+            renderAggroTag(graphics, npc, isAggro, off.x, off.y);
         } else if (config.alwaysShowNpcId()) {
-            renderOnlyNpcId(graphics, npc);
+            renderOnlyNpcId(graphics, npc, off.x, off.y);
         }
     }
 
-    private void renderAggroTag(Graphics2D graphics, NPC npc) {
+    private void renderAggroTag(Graphics2D graphics, NPC npc, boolean isAggro, float offsetX, float offsetY) {
         // ── Opacity & Single-combat dimming ────────────────────────────────────────
         // Apply base opacity from config. If this NPC cannot currently attack the
-        // player (combat slot occupied in a single-combat zone), override with the
-        // dimmed opacity so the player's active target stays visually dominant.
+        // player (combat slot occupied in a single-combat zone), transition to the
+        // dimmed opacity over 1 second so the player's active target stays visually dominant.
         final Composite savedComposite = graphics.getComposite();
-        final boolean dimmed = plugin.isDimmedByMultiCombat(npc);
+        final boolean shouldBeDimmed = plugin.isDimmedByMultiCombat(npc);
 
-        float alpha = Math.max(0f, Math.min(1f, plugin.getConfig().baseOpacity() / 100f));
-        if (dimmed) {
-            alpha = Math.max(0f, Math.min(1f, plugin.getConfig().dimmedOpacity() / 100f));
+        float currentFade = npcFadeMap.getOrDefault(npc.getIndex(), 0f);
+        if (shouldBeDimmed) {
+            currentFade += currentDt;
+            if (currentFade > 1f) currentFade = 1f;
+        } else {
+            currentFade -= currentDt;
+            if (currentFade < 0f) currentFade = 0f;
         }
+        
+        if (currentFade == 0f || currentFade == 1f) {
+            if (npcFadeMap.containsKey(npc.getIndex()) && currentFade == 0f) {
+                npcFadeMap.remove(npc.getIndex());
+            } else if (currentFade == 1f) {
+                npcFadeMap.put(npc.getIndex(), currentFade);
+            }
+        } else {
+            npcFadeMap.put(npc.getIndex(), currentFade);
+        }
+
+        float baseAlpha = Math.max(0f, Math.min(1f, plugin.getConfig().baseOpacity() / 100f));
+        float dimAlpha = Math.max(0f, Math.min(1f, plugin.getConfig().dimmedOpacity() / 100f));
+        float alpha = baseAlpha + (dimAlpha - baseAlpha) * currentFade;
 
         if (alpha < 1f) {
             graphics.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
@@ -374,12 +618,20 @@ public class AggroTagOverlay extends Overlay {
 
         String idStr = "";
         int idWidth = 0;
+        if (plugin.getConfig().showNpcLevel() && npc.getCombatLevel() > 0) {
+            idStr += "[Lvl: " + npc.getCombatLevel() + "] ";
+        }
         if (plugin.getConfig().showNpcId()) {
-            idStr = "[" + npc.getId() + "] ";
+            idStr += "[" + npc.getId() + "] ";
+        }
+        if (!idStr.isEmpty()) {
             idWidth = fm.stringWidth(idStr);
         }
 
-        int y = textPoint.getY() + plugin.getConfig().tagVerticalOffset();
+        int shiftedTextX = textPoint.getX() + (int) offsetX;
+        int shiftedTextY = textPoint.getY() + (int) offsetY;
+
+        int y = shiftedTextY + plugin.getConfig().tagVerticalOffset();
 
         // ── Minigame Behavior Check ───────────────────────────────────────────────
         int regionId = -1;
@@ -396,14 +648,15 @@ public class AggroTagOverlay extends Overlay {
             return;
         }
 
-        boolean showName = !hiddenByConfig && !(inMinigame && behavior == MinigameBehavior.HIDE_NAMES);
+        boolean isCombatState = isAggro || isTargetingPlayer;
+        boolean showName = isCombatState && !hiddenByConfig && !(inMinigame && behavior == MinigameBehavior.HIDE_NAMES);
 
         // ── Name or Square rendering ──────────────────────────────────────────────
-        // NOTE: textPoint.getX() = npcScreenCenterX - nameWidth/2.
+        // NOTE: shiftedTextX = npcScreenCenterX - nameWidth/2.
         // The API already positions the name centered over the NPC, so we draw
-        // the name at textPoint.getX() directly. NPC ID goes to the left, max hit
+        // the name at shiftedTextX directly. NPC ID goes to the left, max hit
         // appends to the right.
-        int npcCenterX = textPoint.getX() + nameWidth / 2 + plugin.getConfig().tagHorizontalOffset();
+        int npcCenterX = shiftedTextX + nameWidth / 2 + plugin.getConfig().tagHorizontalOffset();
         boolean useSquare = plugin.getConfig().useSquareMarker();
         int squareWidth = 0; // Keep track for max hit offset
 
@@ -420,7 +673,7 @@ public class AggroTagOverlay extends Overlay {
                 int totalWidth = idWidth + sSize;
                 int startX = npcCenterX - totalWidth / 2;
 
-                if (plugin.getConfig().showNpcId()) {
+                if (!idStr.isEmpty()) {
                     drawTextWithShadow(graphics, idStr, startX, y, Color.WHITE);
                 }
 
@@ -439,9 +692,9 @@ public class AggroTagOverlay extends Overlay {
                 graphics.fillRect(sqX, sqY, sSize, sSize);
             } else {
                 // Name is the centered anchor; ID goes to the left of it
-                int nameStartX = textPoint.getX() + plugin.getConfig().tagHorizontalOffset();
+                int nameStartX = shiftedTextX + plugin.getConfig().tagHorizontalOffset();
 
-                if (plugin.getConfig().showNpcId()) {
+                if (!idStr.isEmpty()) {
                     drawTextWithShadow(graphics, idStr, nameStartX - idWidth, y, Color.WHITE);
                 }
 
@@ -452,36 +705,48 @@ public class AggroTagOverlay extends Overlay {
             }
         }
 
-        // ── Max hit (skip entirely if disabled or data unavailable) ────────────────
-        boolean showMaxHitForState = isTargetingPlayer
+        // ── Calculate Max Hit State & ID string placement for Hidden Names ─────────
+        boolean showMaxHitForState = plugin.isAllMaxHitHotkeyHeld() || (isTargetingPlayer
                 ? plugin.getConfig().showTargetingMaxHit()
-                : plugin.getConfig().showAggroMaxHit();
-        if (!showMaxHitForState) {
-            graphics.setComposite(savedComposite);
-            return;
-        }
+                : (isAggro && plugin.getConfig().showAggroMaxHit()));
         int maxHit = plugin.getMaxHit(npc);
-        if (maxHit <= 0) {
+        boolean showMaxHit = showMaxHitForState && maxHit > 0;
+        
+        int labelX = 0;
+        boolean centerLabel = !showName;
+        
+        if (centerLabel) {
+            int hpPercent = showMaxHit ? getHpPercent(maxHit) : -1;
+            int labelWidth = showMaxHit ? fm.stringWidth("[" + maxHit + (hpPercent >= 0 ? " \u00b7 " + hpPercent + "%" : "") + "]") : 0;
+            
+            int combinedWidth = idWidth + labelWidth;
+            int startX = npcCenterX - combinedWidth / 2;
+            
+            if (!idStr.isEmpty() && isCombatState) {
+                drawTextWithShadow(graphics, idStr, startX, y, Color.WHITE);
+                labelX = startX + idWidth;
+            } else {
+                labelX = startX;
+            }
+        }
+
+        // ── Max hit (skip entirely if disabled or data unavailable) ────────────────
+        if (!showMaxHit) {
             graphics.setComposite(savedComposite);
             return;
         }
 
         int hpPercent = getHpPercent(maxHit);
 
-        // If the name is hidden, center the max hit over the NPC.
-        // Otherwise, append it to the right of the name (or square).
-        int labelX;
-        boolean centerLabel = !showName;
-        if (centerLabel) {
-            int labelWidth = fm.stringWidth("[" + maxHit + (hpPercent >= 0 ? " \u00b7 " + hpPercent + "%" : "") + "]");
-            labelX = npcCenterX - labelWidth / 2;
-        } else if (useSquare) {
-            // Append to the right of the centered square + ID block
-            int totalWidth = idWidth + squareWidth;
-            labelX = npcCenterX + totalWidth / 2 + 2;
-        } else {
-            // Append to the right of the name
-            labelX = textPoint.getX() + nameWidth + plugin.getConfig().tagHorizontalOffset();
+        if (!centerLabel) {
+            if (useSquare) {
+                // Append to the right of the centered square + ID block
+                int totalWidth = idWidth + squareWidth;
+                labelX = npcCenterX + totalWidth / 2 + 2;
+            } else {
+                // Append to the right of the name
+                labelX = shiftedTextX + nameWidth + plugin.getConfig().tagHorizontalOffset();
+            }
         }
 
         // Determine if a threshold color override is active
@@ -729,8 +994,12 @@ public class AggroTagOverlay extends Overlay {
         return curX;
     }
 
-    private void renderOnlyNpcId(Graphics2D graphics, NPC npc) {
-        String idStr = "[" + npc.getId() + "]";
+    private void renderOnlyNpcId(Graphics2D graphics, NPC npc, float offsetX, float offsetY) {
+        String idStr = "";
+        if (plugin.getConfig().showNpcLevel() && npc.getCombatLevel() > 0) {
+            idStr += "[Lvl: " + npc.getCombatLevel() + "] ";
+        }
+        idStr += "[" + npc.getId() + "]";
 
         // Use the same height as a name tag would be
         Point textPoint = npc.getCanvasTextLocation(graphics, idStr, npc.getLogicalHeight() + TEXT_HEIGHT_OFFSET);
@@ -739,8 +1008,8 @@ public class AggroTagOverlay extends Overlay {
         }
 
         FontMetrics fm = graphics.getFontMetrics();
-        int x = textPoint.getX() - fm.stringWidth(idStr) / 2 + plugin.getConfig().tagHorizontalOffset();
-        int y = textPoint.getY() + plugin.getConfig().tagVerticalOffset();
+        int x = textPoint.getX() - fm.stringWidth(idStr) / 2 + plugin.getConfig().tagHorizontalOffset() + (int) offsetX;
+        int y = textPoint.getY() + plugin.getConfig().tagVerticalOffset() + (int) offsetY;
 
         // White text, consistent with the tagged NPC ID color
         drawTextWithShadow(graphics, idStr, x, y, Color.WHITE);
