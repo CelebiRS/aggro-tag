@@ -96,9 +96,9 @@ public interface AggroTagConfig extends Config {
         return true;
     }
 
-    @ConfigItem(keyName = "showAllMaxHitHotkey", name = "Show All Max Hit (Hold)", description = "Press and hold this key to show the max hit for ALL NPCs, including passive ones.", position = 3, section = maxHitSection)
-    default Keybind showAllMaxHitHotkey() {
-        return Keybind.ALT;
+    @ConfigItem(keyName = "showAllMaxHits", name = "Show All Max Hits", description = "Displays the max hit for ALL NPCs, including passive ones.", position = 3, section = maxHitSection)
+    default boolean showAllMaxHits() {
+        return false;
     }
 
     @ConfigItem(keyName = "colorByAttackStyle", name = "Color Max Hit by Attack Style", description = "<html>When enabled, shows a separate colored number per attack style:<br>&nbsp;&nbsp;<b><font color='#ffe550ff'>Yellow</font></b> = Melee &nbsp;<b><font color='#3CFF64'>Green</font></b> = Ranged &nbsp;<b><font color='#6496FF'>Blue</font></b> = Magic<br>Falls back to yellow if the attack style is unknown.</html>", position = 4, section = maxHitSection)
@@ -191,16 +191,21 @@ public interface AggroTagConfig extends Config {
     @Range(min = 1, max = 50)
     @ConfigItem(keyName = "squareSize", name = "Square Size", description = "The width and height of the square marker.", position = 5, section = squareMarkerSection)
     default int squareSize() {
-        return 8;
+        return 4;
     }
 
     @Range(min = 0, max = 10)
     @ConfigItem(keyName = "squareOutlineSize", name = "Outline Thickness", description = "The thickness of the square's outline.", position = 6, section = squareMarkerSection)
     default int squareOutlineSize() {
-        return 2;
+        return 0;
     }
 
     // ── AGGRESSION RADIUS ──────────────────────────────────────────────────────
+
+    @ConfigItem(keyName = "disableAggroRadius", name = "Disable Aggression Radius", description = "When enabled, disables the overlay display of the aggression radius entirely.", position = 0, section = radiusSection)
+    default boolean disableAggroRadius() {
+        return false;
+    }
 
     @ConfigItem(keyName = "radiusHotkey", name = "Show All Hotkey", description = "Press and hold this key to show the aggression radius of all aggressive NPCs.", position = 1, section = radiusSection)
     default Keybind radiusHotkey() {
@@ -280,7 +285,7 @@ public interface AggroTagConfig extends Config {
 
     @ConfigItem(keyName = "npcDataVersion", name = "NPC Data Version", description = "The date npc_data.json was last rebuilt from the OSRS Wiki for aggression and max-hit data.", position = 3, section = npcIdSection)
     default String npcDataVersion() {
-        return "2026-05-17";
+        return "2026-06-13";
     }
 
     // ── EDGE CASES ─────────────────────────────────────────────────────────────
@@ -297,7 +302,7 @@ public interface AggroTagConfig extends Config {
 
     @ConfigItem(keyName = "minigameBehavior", name = "Minigames", description = "<html>Controls the plugin inside raids and combat minigames where standard aggression rules don't apply (or visual clutter is high):<br>&nbsp;&nbsp;<b>Fight Caves</b>, <b>Inferno</b>, <b>Colosseum</b>, <b>NMZ</b><br>&nbsp;&nbsp;<b>The Gauntlet & Corrupted Gauntlet</b><br>&nbsp;&nbsp;<b>Chambers of Xeric</b>, <b>Theatre of Blood</b>, <b>ToA</b><br>&nbsp;&nbsp;<b>Pest Control</b>, <b>Barbarian Assault</b>, <b>Soul Wars</b>, <b>Temple Trekking</b>, <b>GOTR</b><br><br><b>Show Everything</b> \u2014 legacy, all tags visible<br><b>Hide Names, Show Max Hits</b> \u2014 (default) clears the clutter, keeps combat data<br><b>Disable Plugin Completely</b> \u2014 hides everything inside these zones</html>", position = 3, section = edgeCasesSection)
     default MinigameBehavior minigameBehavior() {
-        return MinigameBehavior.HIDE_NAMES;
+        return MinigameBehavior.DISABLE_ENTIRELY;
     }
 
     @ConfigItem(keyName = "trackGwd", name = "God Wars Dungeon", description = "God items prevent aggression from matching factions.", position = 4, section = edgeCasesSection)

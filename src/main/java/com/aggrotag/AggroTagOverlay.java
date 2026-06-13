@@ -301,6 +301,10 @@ public class AggroTagOverlay extends Overlay {
     // ── Unified Master Radius Generator ────────────────────────────────────────
 
     private void renderAllRadii(Graphics2D graphics, java.util.List<NPC> aggressiveNpcs) {
+        if (plugin.getConfig().disableAggroRadius()) {
+            return;
+        }
+
         boolean anyRadiusToDraw = false;
         java.awt.geom.Area masterArea = new java.awt.geom.Area();
 
@@ -470,9 +474,9 @@ public class AggroTagOverlay extends Overlay {
         boolean isCombatState = isAggro || isTargetingPlayer;
         boolean showName = isCombatState && !hiddenByConfig && !(inMinigame && behavior == MinigameBehavior.HIDE_NAMES);
 
-        boolean showMaxHitForState = plugin.isAllMaxHitHotkeyHeld() || (isTargetingPlayer ? plugin.getConfig().showTargetingMaxHit() : (isAggro && plugin.getConfig().showAggroMaxHit()));
+        boolean showMaxHitForState = plugin.getConfig().showAllMaxHits() || (isTargetingPlayer ? plugin.getConfig().showTargetingMaxHit() : (isAggro && plugin.getConfig().showAggroMaxHit()));
         int maxHit = plugin.getMaxHit(npc);
-        boolean showMaxHit = showMaxHitForState && maxHit > 0;
+        boolean showMaxHit = showMaxHitForState && maxHit >= 0;
 
         boolean hasIdStr = (plugin.getConfig().showNpcLevel() && npc.getCombatLevel() > 0) || plugin.getConfig().showNpcId();
 
@@ -552,8 +556,8 @@ public class AggroTagOverlay extends Overlay {
         Point2D.Float off = tagOffsets.getOrDefault(npc.getIndex(), new Point2D.Float(0, 0));
         
         boolean isTargetingPlayer = npc.getInteracting() == client.getLocalPlayer();
-        boolean showMaxHitForState = plugin.isAllMaxHitHotkeyHeld() || (isTargetingPlayer ? config.showTargetingMaxHit() : (isAggro && config.showAggroMaxHit()));
-        boolean hasMaxHit = showMaxHitForState && plugin.getMaxHit(npc) > 0;
+        boolean showMaxHitForState = plugin.getConfig().showAllMaxHits() || (isTargetingPlayer ? config.showTargetingMaxHit() : (isAggro && config.showAggroMaxHit()));
+        boolean hasMaxHit = showMaxHitForState && plugin.getMaxHit(npc) >= 0;
 
         if (isAggro || hasMaxHit) {
             renderAggroTag(graphics, npc, isAggro, off.x, off.y);
@@ -706,11 +710,11 @@ public class AggroTagOverlay extends Overlay {
         }
 
         // ── Calculate Max Hit State & ID string placement for Hidden Names ─────────
-        boolean showMaxHitForState = plugin.isAllMaxHitHotkeyHeld() || (isTargetingPlayer
+        boolean showMaxHitForState = plugin.getConfig().showAllMaxHits() || (isTargetingPlayer
                 ? plugin.getConfig().showTargetingMaxHit()
                 : (isAggro && plugin.getConfig().showAggroMaxHit()));
         int maxHit = plugin.getMaxHit(npc);
-        boolean showMaxHit = showMaxHitForState && maxHit > 0;
+        boolean showMaxHit = showMaxHitForState && maxHit >= 0;
         
         int labelX = 0;
         boolean centerLabel = !showName;
