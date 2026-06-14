@@ -78,6 +78,7 @@ for i in range(0, total, 50):
             maxhit_map = {}
             aggro_map = {}
             style_map = {}
+            slayer_map = {}
             
             for line in lines:
                 # |id1 = 512,5086,5087
@@ -105,11 +106,16 @@ for i in range(0, total, 50):
                     if "ranged" in val: mask += 2
                     if re.search(r"magic|dragonfire", val): mask += 4
                     if mask > 0: style_map[suffix] = mask
+
+                m = re.match(r"^\|slayer[ _]?level([0-9]*)\s*=\s*([0-9]+)", line, re.IGNORECASE)
+                if m:
+                    slayer_map[m.group(1)] = int(m.group(2))
             
             for suffix, ids_str in id_map.items():
                 mh_key = suffix if suffix in maxhit_map else ("" if "" in maxhit_map else None)
                 ag_key = suffix if suffix in aggro_map else ("" if "" in aggro_map else None)
                 st_key = suffix if suffix in style_map else ("" if "" in style_map else None)
+                sl_key = suffix if suffix in slayer_map else ("" if "" in slayer_map else None)
                 
                 for npc_id_str in re.split(r"[, \n]+", ids_str):
                     npc_id_str = re.sub(r"[^0-9]", "", npc_id_str)
@@ -124,6 +130,8 @@ for i in range(0, total, 50):
                         obj["a"] = aggro_map[ag_key]
                     if st_key is not None:
                         obj["s"] = style_map[st_key]
+                    if sl_key is not None and slayer_map[sl_key] > 0:
+                        obj["l"] = slayer_map[sl_key]
                     if npc_id in faction_map:
                         obj["f"] = faction_map[npc_id]
                         

@@ -27,6 +27,7 @@ import java.util.Map;
  *   {@code "f"} → GWD faction string: one of {@code "bandos"}, {@code "armadyl"},
  *                  {@code "saradomin"}, {@code "zamorak"}, {@code "zaros"}.
  *                  Omitted for non-faction-conditional NPCs.
+ *   {@code "l"} → slayer level requirement (integer, present only when > 0)
  *
  * <h3>Attack style bitmask reference</h3>
  * <pre>
@@ -59,6 +60,7 @@ public class NpcDataLoader {
         Integer a; // 1=aggressive, 0=non-aggressive
         Integer s; // attack style bitmask (0 or absent = unknown)
         String  f; // GWD faction string
+        Integer l; // slayer level requirement
     }
 
     private Map<String, NpcRecord> dataMap = Collections.emptyMap();
@@ -130,5 +132,14 @@ public class NpcDataLoader {
         NpcRecord rec = dataMap.get(String.valueOf(npcId));
         if (rec == null) return null;
         return rec.f;
+    }
+
+    /**
+     * Returns the required Slayer level to damage this NPC, or 0 if there is no requirement.
+     */
+    public int getSlayerLevel(int npcId) {
+        NpcRecord rec = dataMap.get(String.valueOf(npcId));
+        if (rec == null || rec.l == null) return 0;
+        return rec.l;
     }
 }

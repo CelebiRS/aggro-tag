@@ -9,6 +9,8 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 import net.runelite.client.input.KeyListener;
 import net.runelite.client.input.KeyManager;
 import java.awt.event.KeyEvent;
@@ -18,6 +20,7 @@ import net.runelite.api.Client;
 import net.runelite.api.Item;
 import net.runelite.api.ItemContainer;
 import net.runelite.api.NPC;
+import net.runelite.api.Skill;
 import net.runelite.api.EquipmentInventorySlot;
 
 import net.runelite.api.NPCComposition;
@@ -33,6 +36,8 @@ import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.coords.WorldArea;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
+import net.runelite.api.events.ChatMessage;
+import net.runelite.api.ChatMessageType;
 import net.runelite.client.eventbus.Subscribe;
 
 /**
@@ -215,6 +220,10 @@ public class AggroTagPlugin extends Plugin implements KeyListener {
     private boolean loggingIn;
     private int currentPlane = -1;
 
+    // ── Goading Potion State ───────────────────────────────────────────────────
+    private boolean goadingPotionActive = false;
+    private int goadingPotionTicksRemaining = 0;
+
     // ── Plugin lifecycle ───────────────────────────────────────────────────────
 
     private boolean radiusHotkeyHeld;
@@ -328,6 +337,17 @@ public class AggroTagPlugin extends Plugin implements KeyListener {
         String safeName = name != null ? Text.removeTags(name).toLowerCase() : "";
         boolean inWilderness = client.getVarbitValue(VARBIT_IN_WILDERNESS) == 1;
 
+        // Rule 0.5 — Goading Potion
+        if (config.trackGoadingPotion() && goadingPotionActive) {
+            int requiredSlayer = npcDataLoader.getSlayerLevel(id);
+            if (client.getBoostedSkillLevel(Skill.SLAYER) >= requiredSlayer) {
+                Actor interacting = npc.getInteracting();
+                if (interacting == null || interacting == client.getLocalPlayer()) {
+                    return true;
+                }
+            }
+        }
+
         // Rule 0 — Hard-coded Passive
         if (NEVER_AGGRESSIVE_IDS.contains(id))
             return false;
@@ -395,10 +415,18 @@ public class AggroTagPlugin extends Plugin implements KeyListener {
      * @return positive tile count, 0 for passive, or -1 for overlay-disabled
      */
     public int getAggroRadius(NPC npc) {
+        int radius = 0;
         if (config.autoRadius()) {
-            return NpcAggroRadius.getRadius(npc);
+            radius = NpcAggroRadius.getRadius(npc);
+        } else {
+            radius = config.defaultRadius();
         }
-        return config.defaultRadius();
+
+        if (config.trackGoadingPotion() && goadingPotionActive) {
+            radius = Math.max(radius, 4);
+        }
+
+        return radius;
     }
 
     /**
@@ -463,6 +491,8 @@ public class AggroTagPlugin extends Plugin implements KeyListener {
                 lastPlayerLocation = null;
                 toleranceTicksAccumulated = 0;
                 currentPlane = -1;
+                goadingPotionActive = false;
+                goadingPotionTicksRemaining = 0;
                 break;
             default:
                 break;
@@ -471,7 +501,17 @@ public class AggroTagPlugin extends Plugin implements KeyListener {
 
     @Subscribe
     public void onGameTick(GameTick event) {
-        if (!config.trackTolerance() || client.getLocalPlayer() == null)
+        if (client.getLocalPlayer() == null)
+            return;
+
+        if (goadingPotionTicksRemaining > 0) {
+            goadingPotionTicksRemaining--;
+            if (goadingPotionTicksRemaining == 0) {
+                goadingPotionActive = false;
+            }
+        }
+
+        if (!config.trackTolerance())
             return;
 
         WorldPoint newLocation = client.getLocalPlayer().getWorldLocation();
@@ -512,6 +552,22 @@ public class AggroTagPlugin extends Plugin implements KeyListener {
         }
 
         lastPlayerLocation = newLocation;
+    }
+
+    @Subscribe
+    public void onChatMessage(ChatMessage event) {
+        if (event.getType() != ChatMessageType.SPAM && event.getType() != ChatMessageType.GAMEMESSAGE) {
+            return;
+        }
+
+        String msg = event.getMessage();
+        if (msg.contains("You drink some of your goading potion")) {
+            goadingPotionActive = true;
+            goadingPotionTicksRemaining = 600; // 6 minutes
+        } else if (msg.contains("The effects of your Goading potion have worn off.")) {
+            goadingPotionActive = false;
+            goadingPotionTicksRemaining = 0;
+        }
     }
 
     private boolean hasTolerance() {
