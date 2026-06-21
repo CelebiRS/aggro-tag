@@ -303,6 +303,17 @@ public interface AggroTagConfig extends Config {
         return true;
     }
 
+    @ConfigItem(keyName = "highlightSouthwestTile", name = "Highlight Southwest Tile", description = "Highlights the Southwest tile of the NPC, which is the tile used to calculate its aggression.", position = 12, section = radiusSection)
+    default boolean highlightSouthwestTile() {
+        return false;
+    }
+
+    @ConfigItem(keyName = "southwestTileColor", name = "Southwest Tile Color", description = "The color used to highlight the Southwest tile of the NPC.", position = 13, section = radiusSection)
+    default Color southwestTileColor() {
+        return new Color(94, 216, 168, 255);
+    }
+
+
     // ── NPC ID & LEVEL
     // ─────────────────────────────────────────────────────────────
 

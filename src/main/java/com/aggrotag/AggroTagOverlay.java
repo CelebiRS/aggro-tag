@@ -328,99 +328,99 @@ public class AggroTagOverlay extends Overlay {
 
             boolean useTrueTile = plugin.getConfig().radiusTrueTile();
             WorldPoint npcLocation = plugin.getStableLocation(npc); // Debounced anchor
+            var worldView = client.getTopLevelWorldView();
+            LocalPoint actualLocal = npc.getLocalLocation();
+            LocalPoint swLocal = null;
+
+            if (npcLocation != null && worldView != null) {
+                swLocal = LocalPoint.fromWorld(worldView, npcLocation);
+            }
+
+            int TILE = Perspective.LOCAL_TILE_SIZE;
+            int sizeOffset = (size - 1) * (TILE / 2);
+            int smoothOffsetX = (useTrueTile || actualLocal == null || swLocal == null) ? 0 : actualLocal.getX() - (swLocal.getX() + sizeOffset);
+            int smoothOffsetY = (useTrueTile || actualLocal == null || swLocal == null) ? 0 : actualLocal.getY() - (swLocal.getY() + sizeOffset);
+
+            if (plugin.getConfig().highlightSouthwestTile() && swLocal != null) {
+                LocalPoint drawSwPoint = new LocalPoint(swLocal.getX() + smoothOffsetX, swLocal.getY() + smoothOffsetY, worldView);
+                Polygon swPoly = Perspective.getCanvasTilePoly(client, drawSwPoint);
+                if (swPoly != null) {
+                    Color c = plugin.getConfig().southwestTileColor();
+                    graphics.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), 50));
+                    graphics.fill(swPoly);
+                    graphics.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), 255));
+                    graphics.setStroke(new BasicStroke(1.5f));
+                    graphics.draw(swPoly);
+                }
+            }
 
             if (plugin.getConfig().radiusLineOfSight()) {
-                LocalPoint actualLocal = npc.getLocalLocation();
-                var worldView = client.getTopLevelWorldView();
+                if (npcLocation != null && swLocal != null) {
+                    AggroTagPlugin.LosCache cache = plugin.getLosTiles(npc, npcLocation, radius, size);
 
-                if (npcLocation != null && actualLocal != null && worldView != null) {
-                    LocalPoint logicalSwLocal = LocalPoint.fromWorld(worldView, npcLocation);
-
-                    if (logicalSwLocal != null) {
-                        AggroTagPlugin.LosCache cache = plugin.getLosTiles(npc, npcLocation, radius, size);
-
-                        java.awt.geom.Area pure2DGrid = new java.awt.geom.Area();
-                        for (int i = 0; i < cache.count; i++) {
-                            int packed = cache.packedOffsets[i];
-                            int dx = packed >> 16;
-                            int dy = (short) (packed & 0xFFFF);
-                            pure2DGrid.add(new java.awt.geom.Area(new java.awt.Rectangle(dx, dy, 1, 1)));
-                        }
-
-                        int TILE = Perspective.LOCAL_TILE_SIZE;
-                        int sizeOffset = (size - 1) * (TILE / 2);
-                        int smoothOffsetX = useTrueTile ? 0 : actualLocal.getX() - (logicalSwLocal.getX() + sizeOffset);
-                        int smoothOffsetY = useTrueTile ? 0 : actualLocal.getY() - (logicalSwLocal.getY() + sizeOffset);
-
-                        java.awt.geom.GeneralPath screenPath = new java.awt.geom.GeneralPath();
-                        java.awt.geom.PathIterator it = pure2DGrid.getPathIterator(null);
-                        float[] coords = new float[6];
-
-                        while (!it.isDone()) {
-                            int type = it.currentSegment(coords);
-                            if (type == java.awt.geom.PathIterator.SEG_CLOSE) {
-                                screenPath.closePath();
-                            } else {
-                                int localDx = (int) (coords[0] * TILE);
-                                int localDy = (int) (coords[1] * TILE);
-
-                                int px = logicalSwLocal.getX() + localDx - (TILE / 2) + smoothOffsetX;
-                                int py = logicalSwLocal.getY() + localDy - (TILE / 2) + smoothOffsetY;
-
-                                LocalPoint cornerLp = new LocalPoint(px, py, worldView);
-                                Point canvasPt = Perspective.localToCanvas(client, cornerLp,
-                                        worldView.getPlane());
-
-                                if (canvasPt != null) {
-                                    if (type == java.awt.geom.PathIterator.SEG_MOVETO) {
-                                        screenPath.moveTo(canvasPt.getX(), canvasPt.getY());
-                                    } else if (type == java.awt.geom.PathIterator.SEG_LINETO) {
-                                        screenPath.lineTo(canvasPt.getX(), canvasPt.getY());
-                                    }
-                                }
-                            }
-                            it.next();
-                        }
-
-                        masterArea.add(new java.awt.geom.Area(screenPath));
-                        anyRadiusToDraw = true;
+                    java.awt.geom.Area pure2DGrid = new java.awt.geom.Area();
+                    for (int i = 0; i < cache.count; i++) {
+                        int packed = cache.packedOffsets[i];
+                        int dx = packed >> 16;
+                        int dy = (short) (packed & 0xFFFF);
+                        pure2DGrid.add(new java.awt.geom.Area(new java.awt.Rectangle(dx, dy, 1, 1)));
                     }
+
+                    java.awt.geom.GeneralPath screenPath = new java.awt.geom.GeneralPath();
+                    java.awt.geom.PathIterator it = pure2DGrid.getPathIterator(null);
+                    float[] coords = new float[6];
+                    boolean hasMoveTo = false;
+
+                    while (!it.isDone()) {
+                        int type = it.currentSegment(coords);
+                        if (type == java.awt.geom.PathIterator.SEG_CLOSE) {
+                            if (hasMoveTo) {
+                                screenPath.closePath();
+                            }
+                            hasMoveTo = false;
+                        } else {
+                            int localDx = (int) (coords[0] * TILE);
+                            int localDy = (int) (coords[1] * TILE);
+
+                            int px = swLocal.getX() + localDx - (TILE / 2) + smoothOffsetX;
+                            int py = swLocal.getY() + localDy - (TILE / 2) + smoothOffsetY;
+
+                            LocalPoint cornerLp = new LocalPoint(px, py, worldView);
+                            Point canvasPt = Perspective.localToCanvas(client, cornerLp,
+                                    worldView.getPlane());
+
+                            if (canvasPt != null) {
+                                if (type == java.awt.geom.PathIterator.SEG_MOVETO || !hasMoveTo) {
+                                    screenPath.moveTo(canvasPt.getX(), canvasPt.getY());
+                                    hasMoveTo = true;
+                                } else if (type == java.awt.geom.PathIterator.SEG_LINETO) {
+                                    screenPath.lineTo(canvasPt.getX(), canvasPt.getY());
+                                }
+                            } else {
+                                hasMoveTo = false;
+                            }
+                        }
+                        it.next();
+                    }
+
+                    masterArea.add(new java.awt.geom.Area(screenPath));
+                    anyRadiusToDraw = true;
                 }
             } else {
                 // Non-LOS mode: draw a simple square polygon
-                // SW-tile centering: npcLocation is already the SW tile.
-                // We offset to the center of the NPC (accounting for size) and
-                // then draw a totalSize area around that center.
                 int totalSize = size + 2 * radius;
-                var worldView = client.getTopLevelWorldView();
                 LocalPoint drawPoint = null;
 
-                if (npcLocation != null && worldView != null) {
-                    LocalPoint swLp = LocalPoint.fromWorld(worldView, npcLocation);
-                    if (swLp != null) {
-                        int sizeOffset = (size - 1) * (Perspective.LOCAL_TILE_SIZE / 2);
-                        LocalPoint centerLp = new LocalPoint(
-                                swLp.getX() + sizeOffset,
-                                swLp.getY() + sizeOffset,
-                                worldView);
+                if (swLocal != null) {
+                    LocalPoint centerLp = new LocalPoint(
+                            swLocal.getX() + sizeOffset,
+                            swLocal.getY() + sizeOffset,
+                            worldView);
 
-                        if (useTrueTile) {
-                            drawPoint = centerLp;
-                        } else {
-                            // Smooth: blend between strict grid and animated position
-                            LocalPoint actualLocal = npc.getLocalLocation();
-                            if (actualLocal != null) {
-                                int smoothOffsetX = actualLocal.getX() - centerLp.getX();
-                                int smoothOffsetY = actualLocal.getY() - centerLp.getY();
-                                drawPoint = new LocalPoint(
-                                        centerLp.getX() + smoothOffsetX,
-                                        centerLp.getY() + smoothOffsetY,
-                                        worldView);
-                            } else {
-                                drawPoint = centerLp;
-                            }
-                        }
-                    }
+                    drawPoint = new LocalPoint(
+                            centerLp.getX() + smoothOffsetX,
+                            centerLp.getY() + smoothOffsetY,
+                            worldView);
                 }
 
                 if (drawPoint != null) {

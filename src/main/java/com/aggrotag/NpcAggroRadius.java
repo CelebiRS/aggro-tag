@@ -60,6 +60,9 @@ public final class NpcAggroRadius {
         m.put(413, 3);
         m.put(1543, 3);
 
+        // Uniques — 3-tile aggro range
+        m.put(2834, 3);
+
         // ── Category 2: Extended Range Constants ─────────────────────────────
         // Dagannoth Kings — 7-tile aggro
         // Prime=2266, Supreme=2265, Rex=2267
