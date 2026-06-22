@@ -17,6 +17,8 @@ for i in [3166,3167,3168,3169,3170,3171,3172,3173,3174,3175,3176,3177,3178,3179,
 for i in [11290,11291,11293]: faction_map[i] = "zaros"
 
 aggro_overrides = {
+    # Sand Crabs
+    5935: 1, 7206: 1, 5936: 1, 7207: 1
 }
 
 def fetch_json(url, data=None):

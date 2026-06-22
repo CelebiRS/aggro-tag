@@ -20,6 +20,7 @@ import net.runelite.api.ItemContainer;
 import net.runelite.api.NPC;
 import net.runelite.api.Skill;
 import net.runelite.api.EquipmentInventorySlot;
+import net.runelite.client.game.ItemManager;
 
 import net.runelite.api.NPCComposition;
 import net.runelite.client.config.ConfigManager;
@@ -177,7 +178,11 @@ public class AggroTagPlugin extends Plugin implements KeyListener {
     // Deprecated RuneLite API Constants Replacements
     private static final int VARBIT_MULTICOMBAT_AREA = 4605;
     private static final int INVENTORY_ID_EQUIPMENT = 94;
+    private static final int INVENTORY_ID_INVENTORY = 93;
     private static final int VARBIT_IN_WILDERNESS = 5963;
+    private static final int VARBIT_ANTIFIRE = 3981;
+    private static final int VARBIT_SUPER_ANTIFIRE = 6101;
+    private static final int VARBIT_DIARY_KOUREND_ELITE = 7928;
 
     @Inject
     private KeyManager keyManager;
@@ -199,6 +204,9 @@ public class AggroTagPlugin extends Plugin implements KeyListener {
 
     @Inject
     private Gson gson;
+
+    @Inject
+    private ItemManager itemManager;
 
     private NpcDataLoader npcDataLoader;
 
@@ -281,6 +289,10 @@ public class AggroTagPlugin extends Plugin implements KeyListener {
 
     public Client getClient() {
         return client;
+    }
+
+    public ItemManager getItemManager() {
+        return itemManager;
     }
 
     /**
@@ -433,6 +445,188 @@ public class AggroTagPlugin extends Plugin implements KeyListener {
      */
     public boolean shouldDisableOverlay(NPC npc) {
         return config.autoRadius() && NpcAggroRadius.shouldDisableOverlay(npc);
+    }
+
+    // ── Slayer Warnings ───────────────────────────────────────────────────────
+
+    /**
+     * Returns a list of display item IDs for missing slayer equipment warnings.
+     * Each item ID represents a canonical item icon that should be shown with a
+     * cancel sign in the overlay.
+     *
+     * Returns an empty list if:
+     * - Slayer Warnings config is disabled
+     * - The NPC is not the player's current slayer target
+     * - The player has all required equipment
+     */
+    public java.util.List<Integer> getMissingSlayerItems(NPC npc) {
+        if (!config.slayerWarnings()) {
+            return Collections.emptyList();
+        }
+
+        // Check if this NPC is a current slayer target
+        if (slayerPluginService == null) {
+            return Collections.emptyList();
+        }
+        java.util.List<NPC> targets = slayerPluginService.getTargets();
+        if (targets == null || !targets.contains(npc)) {
+            return Collections.emptyList();
+        }
+
+        String name = npc.getName();
+        if (name == null) {
+            return Collections.emptyList();
+        }
+        String safeName = net.runelite.client.util.Text.removeTags(name).toLowerCase();
+
+        java.util.List<SlayerEquipment.SlayerRequirement> requirements = SlayerEquipment.getRequirements(safeName);
+        if (requirements.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        java.util.List<Integer> missingItems = new java.util.ArrayList<>();
+        for (SlayerEquipment.SlayerRequirement req : requirements) {
+            if (!isSlayerRequirementMet(req)) {
+                missingItems.add(req.displayItemId);
+            }
+        }
+        return missingItems;
+    }
+
+    /**
+     * Checks whether a single slayer equipment requirement is met by the player.
+     */
+    private boolean isSlayerRequirementMet(SlayerEquipment.SlayerRequirement req) {
+        switch (req.checkType) {
+            case EQUIPMENT_SLOT:
+                return hasEquipmentInSlot(req.equipmentSlot, req.validItemIds);
+
+            case INVENTORY:
+                return hasItemInInventory(req.validItemIds);
+
+            case EQUIPMENT_OR_INVENTORY:
+                return hasEquipmentInSlot(req.equipmentSlot, req.validItemIds)
+                        || hasItemInInventory(req.validItemIds);
+
+            case ANTIFIRE_OR_SHIELD:
+                return hasEquipmentInSlot(req.equipmentSlot, req.validItemIds)
+                        || isAntifireActive();
+
+            case BOOTS_OR_DIARY:
+                return hasEquipmentInSlot(req.equipmentSlot, req.validItemIds)
+                        || isKourendEliteDiaryComplete();
+
+            case WEAPON_OR_AMMO:
+                return hasEquipmentInSlot(req.equipmentSlot, req.validItemIds)
+                        || hasEquipmentInSlot(EquipmentInventorySlot.AMMO, req.secondaryItemIds);
+
+            case ZYGOMITE_SPRAY:
+                return hasZygomiteSpray();
+
+            default:
+                return true;
+        }
+    }
+
+    /**
+     * Checks if the player has any of the given item IDs in the specified equipment slot.
+     * For HEAD slot checks with slayer helmet IDs, also performs a name-based fallback
+     * to catch future helmet variants.
+     */
+    private boolean hasEquipmentInSlot(EquipmentInventorySlot slot, Set<Integer> validIds) {
+        ItemContainer equipment = client.getItemContainer(INVENTORY_ID_EQUIPMENT);
+        if (equipment == null) {
+            return false;
+        }
+
+        Item item = equipment.getItem(slot.getSlotIdx());
+        if (item == null) {
+            return false;
+        }
+
+        int itemId = item.getId();
+        if (validIds.contains(itemId)) {
+            return true;
+        }
+
+        // Name-based fallback for slayer helmets on HEAD slot
+        if (slot == EquipmentInventorySlot.HEAD && validIds.stream().anyMatch(SlayerEquipment.SLAYER_HELMET_IDS::contains)) {
+            try {
+                String itemName = client.getItemDefinition(itemId).getName();
+                if (itemName != null && itemName.toLowerCase().contains("slayer helm")) {
+                    return true;
+                }
+            } catch (Exception e) {
+                // Silently ignore — fallback to ID-based check
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Checks if the player has any of the given item IDs in their inventory.
+     */
+    private boolean hasItemInInventory(Set<Integer> validIds) {
+        ItemContainer inventory = client.getItemContainer(INVENTORY_ID_INVENTORY);
+        if (inventory == null) {
+            return false;
+        }
+
+        for (Item item : inventory.getItems()) {
+            if (item != null && validIds.contains(item.getId())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Returns true if the player has an active antifire potion buff.
+     */
+    private boolean isAntifireActive() {
+        return client.getVarbitValue(VARBIT_ANTIFIRE) > 0
+                || client.getVarbitValue(VARBIT_SUPER_ANTIFIRE) > 0;
+    }
+
+    /**
+     * Returns true if the player has completed the Kourend & Kebos Elite diary.
+     */
+    private boolean isKourendEliteDiaryComplete() {
+        return client.getVarbitValue(VARBIT_DIARY_KOUREND_ELITE) == 1;
+    }
+
+    /**
+     * Special Zygomite check: player needs a charged fungicide spray (IDs 7421-7430),
+     * OR an empty spray (7431) together with fungicide refill (7432).
+     */
+    private boolean hasZygomiteSpray() {
+        ItemContainer inventory = client.getItemContainer(INVENTORY_ID_INVENTORY);
+        if (inventory == null) {
+            return false;
+        }
+
+        boolean hasChargedSpray = false;
+        boolean hasEmptySpray = false;
+        boolean hasRefill = false;
+
+        for (Item item : inventory.getItems()) {
+            if (item == null) continue;
+            int id = item.getId();
+
+            // Charged sprays: 7421 through 7430
+            if (id >= 7421 && id <= 7430) {
+                hasChargedSpray = true;
+            }
+            if (id == 7431) {
+                hasEmptySpray = true;
+            }
+            if (id == 7432) {
+                hasRefill = true;
+            }
+        }
+
+        return hasChargedSpray || (hasEmptySpray && hasRefill);
     }
 
     /**
@@ -909,6 +1103,15 @@ public class AggroTagPlugin extends Plugin implements KeyListener {
                 if (config.trackTolerance() && hasTolerance())
                     return false;
                 return true;
+            }
+        }
+
+        if (npcId == 5935 || npcId == 7206 || npcId == 5936 || npcId == 7207) {
+            if (client.getLocalPlayer() != null) {
+                int region = client.getLocalPlayer().getWorldLocation().getRegionID();
+                if (region == 6959 || region == 7215 || region == 7216) {
+                    return false;
+                }
             }
         }
 

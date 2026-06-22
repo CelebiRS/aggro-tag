@@ -648,6 +648,7 @@ Rubble: 10666
 Rune dragon: 8027, 8031, 8091
 Ruptura Araxyte: 13673
 Salarin the twisted: 304
+Sand Crab: 5935, 7206
 Sand Snake: 7895, 7903
 Sand Snake (hard): 7894
 Sandy Boulder: 7267
@@ -1264,7 +1265,6 @@ Rubble: 10690, 10692, 10694, 10696
 Runite Golem: 6600
 Rusty: 3281
 San Tojalon: 3964
-Sand Crab: 5935, 7206
 Scarab Swarm: 11723
 Scarred imp: 12377
 Scorpia's guardian: 6617

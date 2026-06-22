@@ -14,7 +14,10 @@ import java.util.Set;
 import java.awt.Polygon;
 import java.awt.BasicStroke;
 import java.awt.Shape;
+import java.awt.Stroke;
+import java.awt.RenderingHints;
 import java.awt.geom.Point2D;
+import java.awt.image.BufferedImage;
 
 import net.runelite.api.NPC;
 import net.runelite.api.NPCComposition;
@@ -750,7 +753,12 @@ public class AggroTagOverlay extends Overlay {
         }
 
         // ── Max hit (skip entirely if disabled or data unavailable) ────────────────
+        // Track the rightmost X position for slayer warning icon placement
+        int warningX = npcCenterX + (showName ? nameWidth / 2 : 0) + plugin.getConfig().tagHorizontalOffset();
+
         if (!showMaxHit) {
+            // No max hit to draw — slayer warnings still render
+            renderSlayerWarnings(graphics, npc, warningX + 4, y, savedComposite);
             graphics.setComposite(savedComposite);
             return;
         }
@@ -783,6 +791,8 @@ public class AggroTagOverlay extends Overlay {
                 thresholdColor = resolved;
             }
         }
+
+        int maxHitEndX = labelX; // Track end of max hit for warning placement
 
         if (useThresholdColor) {
             // Threshold reached — use threshold color + size increase for the entire label
@@ -817,12 +827,13 @@ public class AggroTagOverlay extends Overlay {
             }
 
             drawTextWithShadow(graphics, "]", curX, y, thresholdColor);
+            maxHitEndX = curX + fmScaled.stringWidth("]");
 
             if (fontChanged) {
                 graphics.setFont(savedFont);
             }
         } else if (plugin.getConfig().colorByAttackStyle()) {
-            renderStyleColoredHit(graphics, fm, npc, maxHit, hpPercent, labelX, y, centerLabel);
+            maxHitEndX = renderStyleColoredHit(graphics, fm, npc, maxHit, hpPercent, labelX, y, centerLabel);
         } else {
             Color baseColor = plugin.getConfig().maxHitBaseColor();
             String prefix = centerLabel ? "[" + maxHit : " [" + maxHit;
@@ -834,7 +845,11 @@ public class AggroTagOverlay extends Overlay {
             }
 
             drawTextWithShadow(graphics, "]", curX, y, baseColor);
+            maxHitEndX = curX + fm.stringWidth("]");
         }
+
+        // ── Slayer Warning Icons (appended to the far right) ─────────────────────
+        renderSlayerWarnings(graphics, npc, maxHitEndX + 4, y, savedComposite);
 
         // Always restore the composite regardless of which path was taken above
         graphics.setComposite(savedComposite);
@@ -844,8 +859,10 @@ public class AggroTagOverlay extends Overlay {
      * Renders one colored {@code [N]} per attack-style bit, then appends the
      * HP-percentage suffix once in grey. Falls back to yellow when style is
      * unknown.
+     *
+     * @return the X coordinate after the last drawn element
      */
-    private void renderStyleColoredHit(
+    private int renderStyleColoredHit(
             Graphics2D graphics, FontMetrics fm,
             NPC npc, int maxHit, int hpPercent,
             int startX, int y, boolean centerLabel) {
@@ -882,12 +899,94 @@ public class AggroTagOverlay extends Overlay {
                 tempX = drawPercentageSuffix(graphics, fm, tempX, y, hpPercent);
             }
             drawTextWithShadow(graphics, "]", tempX, y, unknownColor);
-            return;
+            return tempX + fm.stringWidth("]");
         }
 
         // Single percentage appended after all colored labels
         if (hpPercent >= 0) {
-            drawPercentageSuffix(graphics, fm, curX, y, hpPercent);
+            curX = drawPercentageSuffix(graphics, fm, curX, y, hpPercent);
+        }
+        return curX;
+    }
+
+    // ── Slayer Warning Rendering ──────────────────────────────────────────────
+
+    /** Size of each slayer warning item icon in pixels. */
+    private static final int SLAYER_ICON_SIZE = 20;
+    /** The cancel sign is 1.5× the icon size. */
+    private static final float CANCEL_SCALE = 1.5f;
+    /** Cancel sign opacity (60%). */
+    private static final float CANCEL_OPACITY = 0.6f;
+    /** Cancel sign color — red. */
+    private static final Color CANCEL_COLOR = new Color(255, 30, 30);
+    /** Cancel sign stroke — thin (2px). */
+    private static final BasicStroke CANCEL_STROKE = new BasicStroke(2f);
+
+    /**
+     * Draws slayer warning icons (item sprites with a red cancel sign) to the
+     * right of the NPC tag. Each missing piece of equipment gets its own icon.
+     *
+     * The cancel sign is a circle with a diagonal slash, drawn at 60% opacity
+     * and 1.5× the icon size so the player can still see the item underneath.
+     *
+     * @param graphics       the active Graphics2D context
+     * @param npc            the NPC being rendered
+     * @param startX         the X coordinate to start drawing icons
+     * @param baselineY      the text baseline Y coordinate (icons are vertically centered)
+     * @param savedComposite the original composite to restore after drawing
+     */
+    private void renderSlayerWarnings(Graphics2D graphics, NPC npc, int startX, int baselineY, Composite savedComposite) {
+        java.util.List<Integer> missingItems = plugin.getMissingSlayerItems(npc);
+        if (missingItems.isEmpty()) {
+            return;
+        }
+
+        int curX = startX;
+        // Center the icon vertically on the text baseline
+        int iconY = baselineY - SLAYER_ICON_SIZE + 2;
+
+        for (int itemId : missingItems) {
+            // Fetch the item sprite (natively transparent, TYPE_INT_ARGB)
+            BufferedImage itemImage = plugin.getItemManager().getImage(itemId);
+            if (itemImage == null) {
+                continue;
+            }
+
+            // Draw the scaled item icon
+            graphics.drawImage(itemImage, curX, iconY, SLAYER_ICON_SIZE, SLAYER_ICON_SIZE, null);
+
+            // Draw the cancel sign over the icon
+            int cancelSize = (int) (SLAYER_ICON_SIZE * CANCEL_SCALE);
+            int cancelX = curX + (SLAYER_ICON_SIZE - cancelSize) / 2;
+            int cancelY = iconY + (SLAYER_ICON_SIZE - cancelSize) / 2;
+
+            // Save state and apply cancel sign opacity
+            Composite beforeCancel = graphics.getComposite();
+            Stroke beforeStroke = graphics.getStroke();
+            Object beforeAA = graphics.getRenderingHint(RenderingHints.KEY_ANTIALIASING);
+
+            graphics.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, CANCEL_OPACITY));
+            graphics.setColor(CANCEL_COLOR);
+            graphics.setStroke(CANCEL_STROKE);
+            graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+            // Circle
+            graphics.drawOval(cancelX, cancelY, cancelSize, cancelSize);
+            // Diagonal slash (from bottom-left to top-right, like a proper 🚫)
+            int slashPad = (int) (cancelSize * 0.15);
+            graphics.drawLine(
+                    cancelX + slashPad, cancelY + cancelSize - slashPad,
+                    cancelX + cancelSize - slashPad, cancelY + slashPad
+            );
+
+            // Restore graphics state
+            graphics.setComposite(beforeCancel);
+            graphics.setStroke(beforeStroke);
+            if (beforeAA != null) {
+                graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, beforeAA);
+            }
+
+            curX += SLAYER_ICON_SIZE + 3; // 3px gap between icons
         }
     }
 

@@ -18,17 +18,17 @@ public interface AggroTagConfig extends Config {
         return new Color(255, 60, 60, 230);
     }
 
-    @ConfigItem(keyName = "targetingNameColor", name = "Targeting-You Color", description = "Color of the name tag when an NPC is actively targeting/chasing you right now. Lets you distinguish 'will attack' from 'already chasing'.", position = 2)
+    @ConfigItem(keyName = "targetingNameColor", name = "Targeting-You Color", description = "<html>Color of the name tag when an NPC is actively targeting/chasing you right now.<br>Lets you distinguish 'will attack' from 'already chasing'.</html>", position = 2)
     default Color targetingNameColor() {
         return new Color(255, 140, 0, 255);
     }
 
-    @ConfigItem(keyName = "hideAggro", name = "Hide Aggro Tag", description = "When enabled, hides the aggro name tag (or square marker) for NPCs that are aggressive but not currently targeting you. Max hit and other overlays are unaffected.", position = 3)
+    @ConfigItem(keyName = "hideAggro", name = "Hide Aggro Tag", description = "<html>When enabled, hides the aggro name tag (or square marker) <br>for NPCs that are aggressive but not currently targeting you. <br>Max hit and other overlays are unaffected.</html>", position = 3)
     default boolean hideAggro() {
         return false;
     }
 
-    @ConfigItem(keyName = "hideTargeting", name = "Hide Targeting-You Tag", description = "When enabled, hides the targeting-you name tag (or square marker) for NPCs that are actively targeting/chasing you. Max hit and other overlays are unaffected.", position = 4)
+    @ConfigItem(keyName = "hideTargeting", name = "Hide Targeting-You Tag", description = "<html>When enabled, hides the targeting-you name tag (or square marker) <br>for NPCs that are actively targeting/chasing you. <br>Max hit and other overlays are unaffected.</html>", position = 4)
     default boolean hideTargeting() {
         return false;
     }
@@ -62,14 +62,19 @@ public interface AggroTagConfig extends Config {
     }
 
     @Range(min = 0, max = 100)
-    @ConfigItem(keyName = "dimmedOpacity", name = "Dim In-Combat Tags %", description = "How transparent dimmed (when engaged in single combat) NPC tags appear. 0 = fully invisible, 100 = full brightness. Default 25.", position = 9)
+    @ConfigItem(keyName = "dimmedOpacity", name = "Dim In-Combat Tags %", description = "<html>How transparent dimmed (when engaged in single combat) NPC tags appear. <br>0 = fully invisible, 100 = full brightness. Default 25.</html>", position = 9)
     default int dimmedOpacity() {
         return 25;
     }
 
+    @ConfigItem(keyName = "slayerWarnings", name = "Slayer Warnings!", description = "<html>Shows missing slayer equipment icons with a <b><font color='#ff361fff'>RED</font></b> cancel sign<br>on tagged slayer monsters when you are on-task but not wearing<br>the required protection (e.g., Earmuffs for Banshees).</html>", position = 10)
+    default boolean slayerWarnings() {
+        return true;
+    }
+
     // ── SECTIONS ───────────────────────────────────────────────────────────────
 
-    @ConfigSection(name = "Max Hit", description = "Settings for displaying NPC max hits", position = 10, closedByDefault = true)
+    @ConfigSection(name = "Max Hit", description = "Settings for displaying NPC max hits", position = 11, closedByDefault = true)
     String maxHitSection = "maxHitSection";
 
     @ConfigSection(name = "Square Marker", description = "Replace NPC names with a customizable square marker", position = 20, closedByDefault = true)
@@ -114,7 +119,7 @@ public interface AggroTagConfig extends Config {
         return Color.WHITE;
     }
 
-    @ConfigItem(keyName = "showHpPercent", name = "Show Max Hit as % of HP", description = "Appends the max hit as a percentage of your current Hitpoints, e.g. [15 \u00b7 25%]. Values over 100% mean the NPC can theoretically one-shot you.", position = 5, section = maxHitSection)
+    @ConfigItem(keyName = "showHpPercent", name = "Show Max Hit as % of HP", description = "<html>Appends the max hit as a percentage of your current Hitpoints, e.g. [15 \u00b7 25%]. <br>Values over 100% mean the NPC can theoretically one-shot you.</html>", position = 5, section = maxHitSection)
     default boolean showHpPercent() {
         return false;
     }
@@ -293,12 +298,12 @@ public interface AggroTagConfig extends Config {
         return 4;
     }
 
-    @ConfigItem(keyName = "radiusLineOfSight", name = "Line of Sight (LOS) Radius", description = "Dynamically shapes the radius to only show tiles the NPC can actually see, blocking it behind walls/objects.<br><br>Warning: Checking LOS tile-by-tile can impact FPS if many NPCs are on screen.", position = 10, section = radiusSection)
+    @ConfigItem(keyName = "radiusLineOfSight", name = "Line of Sight (LOS) Radius", description = "<html>Dynamically shapes the radius to only show tiles the NPC can actually see,<br>blocking it behind walls/objects.<br><br><b><font color='#ff361fff'>Warning:</font></b> Checking LOS tile-by-tile can impact FPS if many NPCs are on screen.</html>", position = 10, section = radiusSection)
     default boolean radiusLineOfSight() {
         return true;
     }
 
-    @ConfigItem(keyName = "radiusTrueTile", name = "Snap to True Tile", description = "Snaps the aggression radius to the server's strict grid (True Tile) rather than gliding smoothly with the NPC's animation. Crucial for high-level PvM positioning.", position = 11, section = radiusSection)
+    @ConfigItem(keyName = "radiusTrueTile", name = "Snap to True Tile", description = "<html>Snaps the aggression radius to the server's strict grid (True Tile) <br>rather than gliding smoothly with the NPC's animation.</html>", position = 11, section = radiusSection)
     default boolean radiusTrueTile() {
         return true;
     }
@@ -312,7 +317,6 @@ public interface AggroTagConfig extends Config {
     default Color southwestTileColor() {
         return new Color(94, 216, 168, 255);
     }
-
 
     // ── NPC ID & LEVEL
     // ─────────────────────────────────────────────────────────────
