@@ -2,7 +2,7 @@
 
 ![Aggro Tag Demo](images/Dark_Wizard_Demo.png)
 
-> Shows a **coloured name tag** or **square marker** above any NPC that will attack you on sight, with optional max hit display, aggression radius, and Line of Sight visualisation.
+> Shows a name or outlines NPCs that will attack you and/or are targeting you, with options for:<br>Max hits, Aggro Radius, Line of Sight,<br>Slayer warnings and integration, Unique Item aggression (E.g. GWD), Disguises,<br>Goading potion logic, color customization, and more.
 
 ---
 
