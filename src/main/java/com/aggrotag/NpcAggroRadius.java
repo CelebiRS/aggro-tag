@@ -558,6 +558,48 @@ public final class NpcAggroRadius {
         PERMANENTLY_AGGRESSIVE_NAMES = Collections.unmodifiableSet(s);
     }
 
+    // ── BOSSES ──────────────────────────────────────────
+    // These NPCs ignore the 10-minute tolerance timer entirely and are tagged when trackBosses is true
+
+    private static final Set<String> BOSS_NAMES;
+
+    static {
+        Set<String> b = new HashSet<>();
+        b.add("commander zilyana");
+        b.add("kree'arra");
+        b.add("general graardor");
+        b.add("k'ril tsutsaroth");
+        b.add("nex");
+        b.add("the whisperer");
+        b.add("araxxor");
+        b.add("araxyte");
+        b.add("scurrius");
+        b.add("the hueycoatl");
+        b.add("the amoxliatl");
+        b.add("sol heredit");
+        b.add("blood moon");
+        b.add("eclipse moon");
+        b.add("blue moon");
+        b.add("corporeal beast");
+        b.add("kalphite queen");
+        b.add("sarachnis");
+        b.add("zulrah");
+        b.add("vorkath");
+        b.add("skotizo");
+        b.add("phantom muspah");
+        b.add("the nightmare");
+        b.add("phosani's nightmare");
+        b.add("tztok-jad");
+        b.add("tzkal-zuk");
+        b.add("ahrim the blighted");
+        b.add("dharok the wretched");
+        b.add("guthan the infested");
+        b.add("karil the tainted");
+        b.add("torag the corrupted");
+        b.add("verac the defiled");
+        BOSS_NAMES = Collections.unmodifiableSet(b);
+    }
+
     // ── PUBLIC API ───────────────────────────────────────────────────────────
 
     /**
@@ -610,6 +652,18 @@ public final class NpcAggroRadius {
             return false;
         }
         String safeName = Text.removeTags(npc.getName()).toLowerCase();
-        return PERMANENTLY_AGGRESSIVE_NAMES.contains(safeName);
+        return PERMANENTLY_AGGRESSIVE_NAMES.contains(safeName) || BOSS_NAMES.contains(safeName);
+    }
+
+    /**
+     * Returns true if this NPC is a boss
+     * (e.g.Nex, Araxxor).
+     */
+    public static boolean isBoss(NPC npc) {
+        if (npc == null || npc.getName() == null) {
+            return false;
+        }
+        String safeName = Text.removeTags(npc.getName()).toLowerCase();
+        return BOSS_NAMES.contains(safeName) ;
     }
 }
