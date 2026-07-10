@@ -591,12 +591,6 @@ public final class NpcAggroRadius {
         b.add("phosani's nightmare");
         b.add("tztok-jad");
         b.add("tzkal-zuk");
-        b.add("ahrim the blighted");
-        b.add("dharok the wretched");
-        b.add("guthan the infested");
-        b.add("karil the tainted");
-        b.add("torag the corrupted");
-        b.add("verac the defiled");
         b.add("callisto");
         b.add("artio");
         b.add("venenatis");
